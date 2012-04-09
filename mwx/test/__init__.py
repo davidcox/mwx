@@ -1,0 +1,1 @@
+from mock_component_registry import *
