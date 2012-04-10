@@ -1,0 +1,96 @@
+#! /usr/bin/env transform_mw_to_xml
+# ^ this file will be processed at "parse" time by the above script
+#   this means, among other things, that we could write valid MW generating code
+#   in any language we like.  The goal of this DSL is to be as minimal as possible,
+#   and as close as possible to the underlying structure of the MW runtime
+
+def state1 = "State 1"  # these defines will get substituted during compilation to XML
+def state2 = "State 2"
+
+# Variables, a few alternatives played with
+# def x = variable["x", scope="global", default=1, groups=("behavior", "gaze related")]
+variable[tag="s", scope="global", default=0]  # the "tag" property is optional, and assumed if missing
+
+selection_variable["stimulus_randomizer", randomization="random_without_replacement", draw=200, draw_type="samples"]
+
+# Stimuli
+stimulus["blah", type="image_stimulus"]
+
+# replicate[variable="i", from=0, to=10]{
+#     stimulus["stim_$i", type="image_stimulus", file="stim_$i.png"]
+# }
+
+# states that will be referred to later
+def trial_template(name, a_state_object){
+
+    task_system[@name]{
+        state["Start state"]{
+            #actions would go here
+            wait(100ms)
+        } transition {
+            always -> "Init"
+        }
+
+        @a_state_object
+    }
+
+}
+
+
+# Experimental flow, if we open up multiple state systems, there could be
+# more than one thing at this level
+experiment["My experiment"]{
+
+    protocol["Test protocol", randomization="random_with_replacement",
+                              draw=4, draw_type="cycles"]{
+
+        block["Block 1"]{
+
+            trial["Trial 1"]{
+                wait(100ms)   # <-- times are easily parsed/handled
+                report("hello")
+            }
+        }
+
+        block["Block 2", draw=200, draw_type="samples"]{
+
+            trial["Fixation trial"]{
+
+                # @python{    # <- this is converted into an interpreter action
+                #     s = []   # <- first indent is taken as baseline
+                #             # "s" is transparently imported into the environment
+                #     for i in range(0,10,2):
+                #         s[i] = draw_selection(stimulus_randomizer)
+                # }
+
+                # @ruby{
+                #     print s[0];
+                # }
+
+                task_system["My task system"]{
+
+                    state["Start state"]{
+                        # actions
+                        wait(100ms)
+
+                        # @python{
+                        #     print("These can go anywhere an action can.  But use sparingly")
+                        # }
+
+                        report(s[i])
+                        # assign["Named assign action 1"](x = 4)  # <- "regular" invocation
+                        x = 4            # <- syntactic sugar
+                    } transition {
+                        timer_expired(blah) -> "State 2"
+                        4 > 10 -> @state1
+                        (lick_sensor1 > 5) -> "Initiated"
+                    }
+
+                }
+
+            }
+        }
+
+    }
+}
+
