@@ -16,8 +16,8 @@ def mw_template_string(s, subs):
 
 
 class SimpleReplacementTreeWalker(TreeWalker):
-    """Walk the AST and replace all a recognized templated references according
-       to the supplied replacement_table dictionary
+    """ Walk the AST and replace all a recognized templated references according
+        to the supplied replacement_table dictionary
     """
     def __init__(self, tree, replacement_table):
         TreeWalker.__init__(self, tree)
@@ -107,6 +107,9 @@ class TemplateDefinition (MWASTNode):
         #if self.name in self.templates:
         #    raise DuplicateTemplateNameException(self)
 
+    def to_xml(self):
+        return ''
+
     def to_mwx(self, tablevel=0):
 
         output_string = '' + tab * tablevel
@@ -142,6 +145,10 @@ class TemplateDefinition (MWASTNode):
 
         walker = SimpleReplacementTreeWalker(body, replacement_table)
         walker.walk()
+
+        if len(walker.tree) == 1:
+            return walker.tree[0]
+
         return walker.tree
 
 

@@ -127,7 +127,7 @@ class MWASTNode(object):
 
     @property
     def tag(self):
-        if "tag" in self.props:
+        if 'tag' in self.props:
             return self.props['tag']
         else:
             return "<undefined>"
@@ -159,22 +159,23 @@ class MWASTNode(object):
         xml = "<%s " % self.obj_type
 
         for (key, val) in self.props.items():
-
             val_xml = quote_once(escape(str(val)))
-
             xml += ' %s=%s' % (key, val_xml)
+
         xml += ">\n"
 
         if self.children is not None:
-            try:
-                for child in self.children:
-                    if isinstance(child, MWASTNode):
-                        xml += child.to_xml() + "\n"
-                    else:
-                        xml += str(child) + "\n"
-            except Exception as e:
-                logging.debug(self.children)
-                logging.error(e)
+            # try:
+            for child in self.children:
+                if isinstance(child, MWASTNode):
+                    xml += child.to_xml() + "\n"
+                elif getattr(child, '__str__', False):
+                    xml += str(child) + "\n"
+                else:
+                    raise Exception("Can't stringify object: %s" + child)
+            # except Exception as e:
+            #     logging.debug(self.children)
+            #     logging.error(e)
 
         xml += "</%s>" % self.obj_type
         return xml
@@ -244,15 +245,17 @@ class RootNode (MWASTNode):
         xml = "<mwxml>"
 
         if self.children is not None:
-            try:
-                for child in self.children:
-                    if isinstance(child, MWASTNode):
-                        xml += child.to_xml() + "\n"
-                    else:
-                        xml += str(child) + "\n"
-            except Exception as e:
-                logging.debug(self.children)
-                logging.error(e)
+            # try:
+            for child in self.children:
+                if isinstance(child, MWASTNode):
+                    xml += child.to_xml() + "\n"
+                elif getattr(child, '__str__', False):
+                    xml += str(child) + "\n"
+                else:
+                    raise Exception("Can't stringify object: %s" % child)
+            # except Exception as e:
+            #     logging.debug(self.children)
+            #     logging.error(e)
 
         xml += "</mwxml>"
         return xml
@@ -309,9 +312,7 @@ class Action (MWASTNode):
             # elif arg is not None and arg.__class__ == str:
             #     self.props['tag'] = action_type + " " + escape(arg.strip('" '))
             elif getattr(arg, "__str__", False):
-                print 'here'
                 tag = action_type + " " + escape(to_mwx(arg, quote_strings=False))
-                print tag
             else:
                 tag = action_type
 
@@ -428,6 +429,7 @@ class Transition (MWASTNode):
 
         alt_tag = "%s -> %s" % (to_mwx(condition), to_mwx(target))
         kwargs['alt_tag'] = alt_tag
+        kwargs['tag'] = alt_tag
         MWASTNode.__init__(self, 'transition')
 
         if condition is not None:
@@ -462,10 +464,6 @@ class MWVariableReference (MWASTNode):
        indices supplied in a bracket operator (e.g. x[0])
     """
     def __init__(self, identifier=None, index=None, **kwargs):
-        print ">>>>>"
-        print "%s" % identifier
-        print "%s" % index
-        print "<<<<<"
 
         MWASTNode.__init__(self, 'variable_reference', tag=identifier)
 
@@ -493,8 +491,9 @@ class MWVariableReference (MWASTNode):
         if self.index is not None:
             return '%s[%s]' % (self.tag, self.index)
         else:
+            if self.tag is None:
+                raise Exception('Invalid (empty/None) tag')
             return self.tag
-
 
     def __repr__(self):
         return self.__str__()
@@ -523,8 +522,12 @@ class MWFunctionCall (MWASTNode):
                 self.children += [fargs]
 
     def to_mwx(self, tablevel=0):
-        out = tablevel * tab + self.props['tag']
+        return self.to_infix()
+
+    def to_infix(self):
+        out = self.props['tag']
         out += '(' + to_mwx(self.children) + ')'
+        return out
 
     def __str__(self):
         return self.to_mwx()

@@ -117,7 +117,7 @@ class MWXParser:
 
         assign = Literal("=")
         macro_symbol = Suppress("@")
-        def_keyword = Suppress("def")
+        def_keyword = Suppress("macro")
 
         # triple_quote = Suppress("\"\"\"")
 
