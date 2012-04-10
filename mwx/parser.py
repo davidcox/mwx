@@ -155,8 +155,10 @@ class MWXParser:
         # Values and Expressions
         # ------------------------------
 
-        integer_number = Word(nums)
-        float_number = Combine(Word(nums) + Optional(Literal(".") + Word(nums)))
+        integer_number = Word(nums)('str')
+        integer_number.setParseAction(lambda x: int(x.str))
+        float_number = Combine(Word(nums) + Optional(Literal(".") + Word(nums)))('str')
+        float_number.setParseAction(lambda x: float(x.str))
         time_unit = Literal("ms") | Literal("us") | Literal("s") | Literal("min")
         duration = Combine(integer_number + time_unit)
         identifier = Word(alphanums + '_')
@@ -171,14 +173,14 @@ class MWXParser:
 
         function_call.setParseAction(lambda x: function_call_helper(x.name, x.args))
 
-        array_reference = identifier("name") + index_operator_open + expression("index") + index_operator_close
-        array_reference.setParseAction(lambda x: MWVariableReference(x.name, x.index))
+        array_reference = identifier('arr_var_ref_name') + index_operator_open + expression('arr_var_ref_index') + index_operator_close
+        array_reference.setParseAction(lambda x: MWVariableReference(identifier=x.arr_var_ref_name, index=x.arr_var_ref_index))
 
         # for now, just support 1D array indexing.  Fancier slicing, etc. can come later
         #variable_index_argument = Suppress(arg_list_open) + (integer_number | variable_reference) + Suppress(arg_list_close)
 
-        variable_reference = identifier("name")
-        variable_reference.setParseAction(lambda x: [MWVariableReference(x.name, None)])
+        variable_reference = identifier("varname")
+        variable_reference.setParseAction(lambda x: MWVariableReference(identifier=x.varname))
 
         # ------------------------------
         # Templates
@@ -222,7 +224,7 @@ class MWXParser:
         # ------------------------------
 
         # Basic expression handling
-        operand = (template_reference | duration | float_number | integer_number | quoted_string_fn(False) |
+        operand = (template_reference | duration | integer_number | float_number | quoted_string_fn(False) |
                    function_call | array_reference | variable_reference)
 
         exp_op = Literal("^") | Literal("**")
@@ -356,7 +358,7 @@ class MWXParser:
                 prop_list_close + \
                 state_payload
 
-        state.setParseAction(lambda s: State(s.tag, props=s.props, children=s.actions + s.transitions))
+        state.setParseAction(lambda s: State(s.tag, props=s.props, actions=s.actions, transitions=s.transitions))
 
         # ------------------------------
         # Variable Declarations

@@ -52,7 +52,7 @@ def to_mwx(obj, tablevel=0, quote_strings=True):
        objects are returned as a comma-delimited list of mwx strings
     """
     if obj is None:
-        return '""'
+        return 'None'
 
     if type(obj) is str:
         if quote_strings:
@@ -61,7 +61,7 @@ def to_mwx(obj, tablevel=0, quote_strings=True):
             return obj
 
     if getattr(obj, 'to_mwx', False):
-        return obj.to_mwx(tablevel)
+        return obj.to_mwx(tablevel=tablevel)
 
     if isiterable(obj):
         return ", ".join([to_mwx(x) for x in obj])
@@ -111,7 +111,7 @@ class MWASTNode(object):
             self.props = {}
 
         if tag is not None:
-            self.props['tag'] = to_mwx(tag)
+            self.props['tag'] = to_mwx(tag, quote_strings=False)
 
         if isinstance(children, MWASTNode):
             children = [children]
@@ -302,15 +302,20 @@ class Action (MWASTNode):
             else:
                 self.props[shorthand_actions[action_type]] = arg
 
-        if "tag" not in self.props:
-            if "alt_tag" in kwargs:
-                self.props['tag'] = kwargs['alt_tag']
-            elif arg is not None and arg.__class__ == str:
-                self.props['tag'] = action_type + " " + escape(arg.strip('" '))
+        tag = None
+        if 'tag' not in self.props:
+            if 'alt_tag' in kwargs:
+                tag = kwargs['alt_tag']
+            # elif arg is not None and arg.__class__ == str:
+            #     self.props['tag'] = action_type + " " + escape(arg.strip('" '))
             elif getattr(arg, "__str__", False):
-                self.props['tag'] = action_type + " " + escape((to_mwx(arg)).strip('" '))
+                print 'here'
+                tag = action_type + " " + escape(to_mwx(arg, quote_strings=False))
+                print tag
             else:
-                self.props['tag'] = action_type
+                tag = action_type
+
+        self.props['tag'] = tag
 
     def to_mwx(self, tablevel=0):
 
@@ -410,8 +415,8 @@ class State (MWASTNode):
 
     def __init__(self, tag=None, actions=[], transitions=[], **kwargs):
 
-        MWASTNode.__init__(self, "state", tag)
-        self.children += actions + transitions
+        children = actions + transitions
+        MWASTNode.__init__(self, "state", tag, children=children)
 
 
 class Transition (MWASTNode):
@@ -423,7 +428,7 @@ class Transition (MWASTNode):
 
         alt_tag = "%s -> %s" % (to_mwx(condition), to_mwx(target))
         kwargs['alt_tag'] = alt_tag
-        MWASTNode.__init__(self, "transition")
+        MWASTNode.__init__(self, 'transition')
 
         if condition is not None:
             self.props['condition'] = condition
@@ -454,43 +459,48 @@ class DuplicateTemplateNameException(Exception):
 
 class MWVariableReference (MWASTNode):
     """A class that represents variable references, including those with
-       indices supplied in a brack operator (e.g. x[0])
+       indices supplied in a bracket operator (e.g. x[0])
     """
     def __init__(self, identifier=None, index=None, **kwargs):
+        print ">>>>>"
+        print "%s" % identifier
+        print "%s" % index
+        print "<<<<<"
 
-        MWASTNode.__init__(self, "variable_reference")
-
-        if identifier is not None:
-            self.props['tag'] = identifier
+        MWASTNode.__init__(self, 'variable_reference', tag=identifier)
 
         # "index" is the index in the case of an array reference
         if index is '':
             index = None
 
-        if index is not None:
+        self.index = index
+
+        # put the index elements into the parent class children
+        # so that recursive evaluation / discovery finds them
+        if self.index is not None:
             if isiterable(index):
                 self.children += index
             else:
                 self.children += [index]
 
-    @property
-    def index(self):
-        if len(self.children) < 1:
-            return None
-        #return self.children[0]
-        return self.children
-
-    def __str__(self):
+    def to_ast_string(self):
         if self.index is None:
             return "@var(" + self.tag + ")"
         else:
             return "@var(" + self.tag + "[" + str(self.index) + "])"
 
+    def __str__(self):
+        if self.index is not None:
+            return '%s[%s]' % (self.tag, self.index)
+        else:
+            return self.tag
+
+
     def __repr__(self):
-        return str(self)
+        return self.__str__()
 
     def to_mwx(self, tablevel=0):
-        return str(self.tag)
+        return self.__str__()
 
 
 class MWFunctionCall (MWASTNode):
@@ -516,6 +526,10 @@ class MWFunctionCall (MWASTNode):
         out = tablevel * tab + self.props['tag']
         out += '(' + to_mwx(self.children) + ')'
 
+    def __str__(self):
+        return self.to_mwx()
+
+
 
 class MWExpression (MWASTNode):
     """A node representing an arithmetic expression"""
@@ -537,10 +551,10 @@ class MWExpression (MWASTNode):
         "Check to see if the operands are variables; if not simplify the expression"
         return self
 
-    def to_xml(self):
-        return self.__str__()
-
     def __str__(self):
+        return self.to_infix()
+
+    def __ast_str__(self):
         if len(self.children) == 1:
             return "[%s: %s]" % (self.op, self.children[0])
         else:
@@ -550,9 +564,12 @@ class MWExpression (MWASTNode):
         return self.__str__()
 
     def to_ast_string(self, tablevel=0):
-        return tab * tablevel + "EXPRESSION[" + self.__str__() + "]"
+        return tab * tablevel + "EXPRESSION[" + self.__ast_str__() + "]"
 
     def to_mwx(self, tablevel=0):
+        return self.to_infix()
+
+    def to_xml(self):
         return self.to_infix()
 
     def to_infix(self, strip_quotes=False):
