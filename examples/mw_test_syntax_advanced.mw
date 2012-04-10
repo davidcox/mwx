@@ -20,6 +20,18 @@ stimulus["blah", type="image_stimulus"]
 #     stimulus["stim_$i", type="image_stimulus", file="stim_$i.png"]
 # }
 
+macro wait_action(name, long_wait){
+    state[@name] {
+        @if(long_wait){
+            wait(100ms)
+        } else {
+            wait(50ms)
+        }
+    } transition {
+        always -> "Init"
+    }
+}
+
 # states that will be referred to later
 macro trial_template(name, a_state_object){
 
@@ -42,7 +54,7 @@ macro trial_template(name, a_state_object){
 experiment["My experiment"]{
 
     protocol["Test protocol", randomization="random_with_replacement",
-                              draw=4, draw_type="cycles"]{
+                              draws="4 cycles"]{
 
         block["Block 1"]{
 
@@ -52,7 +64,7 @@ experiment["My experiment"]{
             }
         }
 
-        block["Block 2", draw=200, draw_type="samples"]{
+        block["Block 2", draws="200 samples"]{
 
             trial["Fixation trial"]{
 
@@ -66,6 +78,8 @@ experiment["My experiment"]{
                 # @ruby{
                 #     print s[0];
                 # }
+
+                @trial_template("Blah", @wait_action("blah2", True))
 
                 task_system["My task system"]{
 

@@ -1,7 +1,7 @@
 """This module provides machinery for evaluating mwx templates."""
 
 from ast import *
-from copy import deepcopy
+from copy import copy
 import logging
 import string
 
@@ -36,6 +36,7 @@ class SimpleReplacementTreeWalker(TreeWalker):
         return False
 
     def action(self, node, parent=None, parent_ctx=None, index=None):
+
         if isinstance(node, MWExpression):
             return
 
@@ -47,9 +48,11 @@ class SimpleReplacementTreeWalker(TreeWalker):
             parent.rewrite(parent_ctx, index, new_string)
             return None
 
-        if node.name in self.replacement_table:
+        if getattr(node, 'name', False) and node.name in self.replacement_table:
             replacement = self.replacement_table[node.name]
             parent.rewrite(parent_ctx, index, replacement)
+            return None
+
         return None
 
 
@@ -85,11 +88,11 @@ class TemplateDefinition (MWASTNode):
 
     def __init__(self, name=None, args=[], **kwargs):
 
-        MWASTNode.__init__(self, "template_definition", **kwargs)
+        MWASTNode.__init__(self, 'template_definition', **kwargs)
 
         # todo: the mapping of this onto the MWASTNode base class is squirrely
 
-        self.body = deepcopy(flatten(self.children))
+        self.body = self.children
 
         if name is not None:
             self.name = name
@@ -102,6 +105,10 @@ class TemplateDefinition (MWASTNode):
             self.props['args'] = args  # TODO
         else:
             self.args = self.props['args']
+
+        # deposit the args in the "children" field
+        # recursive descent can find them
+        # self.children += self.args
 
         # register this new template
         #if self.name in self.templates:
@@ -133,7 +140,7 @@ class TemplateDefinition (MWASTNode):
 
         return output_string
 
-    def __call__(self, args=[]):
+    def __call__(self, args=[], templates={}):
         "Apply the template"
 
         body = self.body
@@ -143,13 +150,24 @@ class TemplateDefinition (MWASTNode):
 
         replacement_table = dict(zip(self.args, args))
 
-        walker = SimpleReplacementTreeWalker(body, replacement_table)
+        # attach the body to a temporary root node
+        body_root = RootNode(children=body)
+
+        # apply simple macro-value replacement
+        walker = SimpleReplacementTreeWalker(body_root, replacement_table)
         walker.walk()
 
-        if len(walker.tree) == 1:
-            return walker.tree[0]
+        new_tree = walker.tree
 
-        return walker.tree
+        # apply a full round of macro evaluation in this context
+        template_rewriter = TemplateTreeRewriter(new_tree, templates=templates)
+        template_rewriter.rewrite_tree()
+        new_tree = template_rewriter.tree.children
+
+        if len(new_tree) == 1:
+            new_tree = new_tree[0]
+
+        return new_tree
 
 
 class TemplateReference (MWASTNode):
@@ -171,6 +189,10 @@ class TemplateReference (MWASTNode):
         else:
             self.args = self.props['args']
 
+        # deposit the args in the "children" field
+        # recursive descent can find them
+        self.children += self.args
+
         self.resolved = False
 
     @property
@@ -183,14 +205,23 @@ class TemplateReference (MWASTNode):
 
         # lookup
         if name not in templates:
+            logging.debug("Unknown template %s" % name)
             return None
+
+        # resolve the template arguments, if needed
+        def attempt_resolve(arg):
+            if getattr(arg, 'resolve', False):
+                return arg.resolve(templates)
+            else:
+                return arg
+        args = [attempt_resolve(a) for a in args]
 
         template = templates[name]
 
         if len(template.args) != len(args):
-            raise InvalidTemplateArgsException(template, node)
+            raise InvalidTemplateArgsException(template, self)
 
-        result = template(args)
+        result = template(args, templates=templates)
 
         return result
 
@@ -210,8 +241,8 @@ class TemplateIf(MWASTNode):
         MWASTNode.__init__(self, 'template_if')
 
         self.condition = condition
-        self.body = deepcopy(flatten(body))
-        self.else_body = deepcopy(flatten(else_body))
+        self.body = flatten(body)
+        self.else_body = flatten(else_body)
 
         self.children = [self.condition] + self.body + self.else_body
 
@@ -237,9 +268,9 @@ class TemplateIf(MWASTNode):
                 c = False
 
         if c:
-            return deepcopy(self.body)
+            return resolve_templates(self.body, templates)
         else:
-            return deepcopy(self.else_body)
+            return resolve_templates(self.else_body, templates)
 
 
 class TemplateDefinitionFinder(TreeWalker):
@@ -308,6 +339,8 @@ class TemplateReferenceRewriter(TreeWalker):
     def should_descend(self, node):
         if isinstance(node, TemplateDefinition):
             return False
+        elif isinstance(node, TemplateIf):
+            return False
         else:
             return True
 
@@ -323,26 +356,34 @@ class TemplateReferenceRewriter(TreeWalker):
 
 
 class TemplateTreeRewriter (object):
-    """An object that finds and coordinates the rewriting of templates
-       references in an AST.
+    """ An object that finds and coordinates the rewriting of templates
+        references in an AST.
     """
 
-    def __init__(self, tree, **kwargs):
-        self.tree = tree
-        self.maximum_rewrites = kwargs.pop("maximum_rewrites", 15)
+    def __init__(self, tree, maximum_rewrites=15, templates={}):
+        if getattr(tree, '__iter__', False):
+            self.tree = RootNode(children=tree)
+            self.has_tmp_root_node = True
+        else:
+            self.tree = tree
+            self.has_tmp_root_node = False
+
+        self.templates = copy(templates)
+        self.maximum_rewrites = maximum_rewrites
 
     def find_templates(self):
         walker = TemplateDefinitionFinder(self.tree)
-        self.templates = walker.walk()
+        self.templates.update(walker.walk())
 
     def rewrite_tree(self):
         # build a dictionary of template declarations
         self.find_templates()
 
+        # build an tree-walker object that will rewrite the tree
+        # replacing references with their values
         rewriter = TemplateReferenceRewriter(self.tree, self.templates)
 
         unresolved = rewriter.walk()
-
         self.tree = rewriter.tree
 
         count = 0
@@ -358,9 +399,19 @@ class TemplateTreeRewriter (object):
             # TODO come up with a list of what went wrong
             raise UnresolvedTemplateReferencesException(unresolved)
 
+        # Simplify expressions to the extent possible
         simplifier = ExpressionSimplifier(self.tree)
         simplifier.walk()
 
         self.tree = simplifier.tree
 
+        if self.has_tmp_root_node:
+            self.tree = self.tree.children
+
         return self.tree
+
+
+def resolve_templates(tree, templates={}):
+
+    tree_rewriter = TemplateTreeRewriter(tree, templates=templates)
+    return tree_rewriter.rewrite_tree()

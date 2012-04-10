@@ -1,9 +1,11 @@
 
 from pyparsing import *
-from ast import *
 import re
 from copy import deepcopy
-from mw_constants import *
+
+from mwx.ast import *
+from mwx.constants import *
+from mwx.ast.rewrites import do_registered_rewrites
 
 
 # Helper functions
@@ -212,12 +214,14 @@ class MWXParser:
         macro_if = macro_symbol + Suppress("if") + \
                    Suppress("(") + expression("condition") + Suppress(")") -\
                    block(object_declaration, "body") +\
-                   Optional(macro_symbol + Suppress("else") + \
+                   Optional(Suppress("else") + \
                             block(object_declaration, "else_body"))
 
         macro_if.setParseAction(lambda x: TemplateIf(x.condition,
                                                      x.body,
                                                      x.else_body))
+
+        macro_element = macro_if | macro_template_val
 
         # ------------------------------
         # Operators, infix notation, etc.
@@ -316,7 +320,7 @@ class MWXParser:
         if_action = Literal("if") + conditional("condition") + block(action, "children")
         if_action.setParseAction(lambda a: MWASTNode("action", props={"type": "if", "condition": a.condition}, children=a.children))
 
-        action << (dummy_token("action") | generic_action | assignment_action | foreign_code_action | if_action)
+        action << (dummy_token("action") | macro_element | generic_action | assignment_action | foreign_code_action | if_action)
 
         # "Ordinary" components
 
@@ -336,7 +340,8 @@ class MWXParser:
                                  prop_list_close
         noncontainer.setParseAction(lambda o: MWASTNode(o.obj_type, o.tag, props=nested_array_to_dict(o.props)))
 
-        transition = ((dummy_token("transition") | Literal("always") | conditional)("condition") -
+        transition = ((dummy_token("transition") | macro_element |
+                        Literal("always") | conditional)("condition") -
                         Suppress("->") +
                         (dummy_token("transition target") |
                             quoted_string_fn() | template_reference | Literal("yield"))("target") +
@@ -409,15 +414,15 @@ class MWXParser:
             print_parser_error(pe, s)
             exit()
 
-        root_node = RootNode(children=results)
-
         if process_templates:
+            results = resolve_templates(results)
 
-            template_engine = TemplateTreeRewriter(root_node)
-            new_tree = template_engine.rewrite_tree()
-            return new_tree
-        else:
-            return root_node
+        results = do_registered_rewrites(results)
+
+        if getattr(results, '__iter__', False):
+            results = RootNode(children=results)
+
+        return results
 
 
 class MWXMLParser:
@@ -457,9 +462,12 @@ class MWXMLParser:
 
         root_node = RootNode(children=mwtree)
 
+        return_tree = root_node
+
         if process_templates:
             template_engine = TemplateTreeRewriter(root_node)
-            new_tree = template_engine.rewrite_tree()
-            return new_tree
-        else:
-            return root_node
+            return_tree = template_engine.rewrite_tree()
+
+        return_tree = do_registered_rewrites(return_tree)
+
+        return return_tree
