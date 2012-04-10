@@ -1,8 +1,4 @@
-#! /usr/bin/env transform_mw_to_xml
-# ^ this file will be processed at "parse" time by the above script
-#   this means, among other things, that we could write valid MW generating code
-#   in any language we like.  The goal of this DSL is to be as minimal as possible,
-#   and as close as possible to the underlying structure of the MW runtime
+## mwpp="/usr/bin/env mwx -x"
 
 macro state1 = "State 1"  # these defines will get substituted during compilation to XML
 macro state2 = "State 2"
@@ -20,12 +16,21 @@ stimulus["blah", type="image_stimulus"]
 #     stimulus["stim_$i", type="image_stimulus", file="stim_$i.png"]
 # }
 
+macro macro_for_nesting(a){
+    wait(a)
+}
+
 macro wait_action(name, long_wait){
+
+    macro a_nested_macro_definition(){
+        wait(50ms)
+    }
+
     state[@name] {
         @if(long_wait){
-            wait(100ms)
+            @macro_for_nesting(100ms)
         } else {
-            wait(50ms)
+            @a_nested_macro_definition()
         }
     } transition {
         always -> "Init"
