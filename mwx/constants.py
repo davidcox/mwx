@@ -1,33 +1,72 @@
 # TODO: read these from MW itself
 
 container_types = ['experiment', 'protocol', 'block', 'trial', 'protocol',
-                   'task_system']
+                   'task_system', 'io_device', 'iodevice']
 
 selection_types = container_types + ['selection_variable']
 
 noncontainer_types = ['stimulus',
                       'variable',
-                      'selection_variable',
-                      'io_device']
+                      'selection_variable']
 
+
+class MWProperty(object):
+
+    def __init__(self, name, field_type):
+        self.name = name
+        self.type = field_type
+
+    def __str__(self):
+        return self.name
+
+    def convert_to_mwx(self, s):
+        return self.type.convert_to_mwx(s)
+
+    def __hash__(self):
+        return self.name.__hash__()
+
+    def __eq__(self, other):
+        return self.name == other
+
+
+def quoted_string(s):
+    return '"s"'
+
+
+class MWType(object):
+
+    def __init__(self, name, interpret_fn=str):
+        self.name = name
+        self.interpret_fn = interpret_fn
+
+    def convert_to_mwx(self, s):
+        return self.interpret_fn(s)
+
+mw_string = MWType('string', quoted_string)
+mw_time = MWType('time')
+mw_expression = MWType('expression')
+mw_stimulus = MWType('stimulus')
+mw_selection = MWType('selection')
+mw_iodevice = MWType('iodevice')
+mw_sound = MWType('sound')
 
 # action types that can be displayed using shorthand
 # dictionary type -> primary arg
-shorthand_actions = {'wait':                          'duration',
-                     'report':                        'message',
+shorthand_actions = {'wait':                          MWProperty('duration', mw_time),
+                     'report':                        MWProperty('message', mw_string),
                      'update_stimulus_display':       None,
-                     'bring_stimulus_to_front':       'stimulus',
-                     'send_stimulus_to_back':         'stimulus',
-                     'live_queue_stimulus':           'stimulus',
-                     'queue_stimulus':                'stimulus',
-                     'dequeue_stimulus':              'stimulus',
-                     'play_sound':                    'sound',
-                     'if':                            'condition',
-                     'start_device_io':               'device',
-                     'stop_device_io':                'device',
-                     'accept_selections':             'selection',
-                     'reject_selections':             'selection',
-                     'reset_selections':              'selection'}
+                     'bring_stimulus_to_front':       MWProperty('stimulus', mw_stimulus),
+                     'send_stimulus_to_back':         MWProperty('stimulus', mw_stimulus),
+                     'live_queue_stimulus':           MWProperty('stimulus', mw_stimulus),
+                     'queue_stimulus':                MWProperty('stimulus', mw_stimulus),
+                     'dequeue_stimulus':              MWProperty('stimulus', mw_stimulus),
+                     'play_sound':                    MWProperty('sound', mw_sound),
+                     'if':                            MWProperty('condition', mw_expression),
+                     'start_device_io':               MWProperty('device', mw_iodevice),
+                     'stop_device_io':                MWProperty('device', mw_iodevice),
+                     'accept_selections':             MWProperty('selection', mw_selection),
+                     'reject_selections':             MWProperty('selection', mw_selection),
+                     'reset_selections':              MWProperty('selection', mw_selection)}
 
 shorthand_action_types = shorthand_actions.keys()
 

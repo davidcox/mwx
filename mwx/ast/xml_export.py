@@ -1,6 +1,8 @@
-''' A collection of AST-tree rewriters for bridging between new MWX syntax and
-    old MWXML syntax.
 '''
+A collection of AST-tree rewriters for bridging between new MWX syntax and
+old MWXML syntax.
+'''
+
 from mwx.ast.templates import *
 from mwx.constants import *
 import re

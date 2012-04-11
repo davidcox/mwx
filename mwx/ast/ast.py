@@ -1,6 +1,5 @@
 from xml.sax.saxutils import escape
 from copy import deepcopy, copy
-import logging
 
 PRIMARY_ARG_STRING = "arg"
 from mwx.constants import shorthand_actions
@@ -56,7 +55,7 @@ def mwx_properties_block(props):
     props_strings = []
     if tag is not None:
         props_strings += ['"%s"' % tag]
-    props_strings += ['%s=%s' % kv for kv in props.items()]
+    props_strings += ['%s=%s' % (kv[0], to_mwx(kv[1])) for kv in props.items()]
     output_string += ", ".join(props_strings)
 
     output_string += ']'
@@ -80,13 +79,16 @@ def mwx_child_block(children, tablevel=0):
     return output_string
 
 
-def to_mwx(obj, tablevel=0, quote_strings=True):
+def to_mwx(obj, tablevel=0, quote_strings=True, mw_type=None):
     """Convert an object to a string in MWX format.  If the object supplies a
        to_mwx method, this is called.  Strings are simply quoted, and lists of
        objects are returned as a comma-delimited list of mwx strings
     """
     if obj is None:
         return 'None'
+
+    if mw_type is not None:
+        return mw_type.convert_to_mwx(obj)
 
     if type(obj) is str:
         if quote_strings:
@@ -154,6 +156,8 @@ class MWASTNode(object):
 
         if self.children == None:
             self.children = []
+
+        self.silent_syntax = False
 
     @property
     def unresolved(self):
@@ -236,14 +240,29 @@ class MWASTNode(object):
         tabs = tab * tablevel
 
         output_string = tabs
-        output_string += self.obj_type
 
+        if self.silent_syntax:
+            output_string += '\n# ' + self.tag + '\n\n'
+            output_string += ''.join([to_mwx(c) for c in self.children])
+            return output_string
+
+        output_string += self.obj_type
         output_string += mwx_properties_block(self.props)
+
         output_string += mwx_child_block(self.children, tablevel)
 
         output_string += '\n'
 
         return output_string
+
+
+class MWKeyword (object):
+
+    def __init__(self, name):
+        self.name = name
+
+    def to_mwx(self, tablevel=0):
+        return self.name
 
 
 class RootNode (MWASTNode):
@@ -337,10 +356,10 @@ class Action (MWASTNode):
         if PRIMARY_ARG_STRING in props.keys():
             args.append(to_mwx(self.props[PRIMARY_ARG_STRING]))
 
-        primary_arg_key = shorthand_actions.get(props['type'], None)
+        primary_arg_property = shorthand_actions.get(props['type'], None)
 
-        if primary_arg_key is not None:
-            args.append(to_mwx(props.pop(primary_arg_key)))
+        if primary_arg_property is not None:
+            args.append(to_mwx(props.pop(primary_arg_property), mw_type=primary_arg_property))
 
         for key in props.keys():
             if key == PRIMARY_ARG_STRING or key == "tag" or key == "type":
@@ -406,7 +425,7 @@ class AssignmentAction (Action):
         tabs = tab * tablevel
         output_string = "" + tabs
 
-        output_string += "%s = %s" % (self.props['variable'], to_mwx(self.props['value']))
+        output_string += "%s = %s" % (self.props['variable'], to_mwx(self.props['value'], quote_strings=False))
         output_string += '\n'
 
         return output_string
@@ -737,7 +756,7 @@ class TreeWalker:
        further traversal ill-defined.
     """
 
-    def __init__(self, tree, continue_after_rewrite=False):
+    def __init__(self, tree, continue_after_rewrite=True):
         self.tree = tree
         self.continue_after_rewrite = continue_after_rewrite
         self.result = None
@@ -767,26 +786,31 @@ class TreeWalker:
 
     def _walk_recursive(self, node, parent=None, parent_context=None, index=None):
 
+        returned_node = None
+
         # test the trigger on this node
         if(self.trigger(node)):
-            self.action(node, parent, parent_context, index)
+            returned_node = self.action(node, parent, parent_context, index)
+
+        # if we've been instructed to bail after a single trigger, bail
+        if (not self.continue_after_rewrite and returned_node is not None):
+            return
+
+        if returned_node is not None:
+            node = returned_node
 
         # decide whether to recurse downward
         if not self.should_descend(node):
             return
 
         # walk attributes
-        if getattr(node, "props", False):
+        if getattr(node, 'props', False):
             for k in node.props.keys():
                 p = node.props[k]
                 self._walk_recursive(p, node, MWASTNode.PROPERTY_CTX, k)
 
-        # if we've been instructed to bail after a single trigger, bail
-        if (not self.continue_after_rewrite and self.rewritten):
-            return
-
         # walk children
-        if getattr(node, "children", False):
+        if getattr(node, 'children', False):
             for child in node.children:
                 c = node.children.index(child)
                 self._walk_recursive(child, node, MWASTNode.CHILD_CTX, c)

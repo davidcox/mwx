@@ -3,14 +3,21 @@
 macro state1 = "State 1"  # these defines will get substituted during compilation to XML
 macro state2 = "State 2"
 
-# Variables, a few alternatives played with
+# Variables, a few alternatives played with∏
 # def x = variable["x", scope="global", default=1, groups=("behavior", "gaze related")]
 variable["s", scope="global", default=0]  # the "tag" property is optional, and assumed if missing
 
 selection_variable["stimulus_randomizer", randomization="random_without_replacement", draw=200, draw_type="samples"]
 
+block['blah']{
+    trial['bleep']
+}
+
 # Stimuli
 stimulus["blah", type="image_stimulus"]
+
+# alt syntax
+stimulus blah[type='image_stimulus']
 
 # replicate[variable="i", from=0, to=10]{
 #     stimulus["stim_$i", type="image_stimulus", file="stim_$i.png"]

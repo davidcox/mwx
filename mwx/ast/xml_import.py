@@ -1,3 +1,7 @@
+'''
+AST rewriting utilities for importing XML and converting to mwx.
+Smoothes over differences betweem MWXML syntax and mwx
+'''
 
 from mwx.ast import *
 from mwx.constants import shorthand_actions, reverse_type_aliases
@@ -41,6 +45,8 @@ class PromoteGenericActions (TreeWalker):
 
         parent.rewrite(parent_ctx, index, replacement)
 
+        return replacement
+
 
 @registered
 class DeleteMarkers (TreeWalker):
@@ -52,6 +58,8 @@ class DeleteMarkers (TreeWalker):
 
     def action(self, node, parent=None, parent_ctx=None, index=None):
         parent.remove_node(parent_ctx, index)
+
+        return None
 
 
 @registered
@@ -83,6 +91,8 @@ class ReverseTypeAliasRewriter(TreeWalker):
     def action(self, node, parent=None, parent_ctx=None, index=None):
         node.obj_type = reverse_type_aliases[node.obj_type]
 
+        return None
+
 
 @registered
 class PromoteTransitions(TreeWalker):
@@ -96,10 +106,10 @@ class PromoteTransitions(TreeWalker):
         if transition_type == 'conditional':
             condition = node.props.get('condition', None)
         else:
-            condition = 'always'
+            condition = MWKeyword('always')
 
         if transition_type == 'yield':
-            target = 'yield'
+            target = MWKeyword('yield')
         else:
             target = node.props.get('target', None)
 
@@ -109,8 +119,9 @@ class PromoteTransitions(TreeWalker):
         replacement = Transition(condition=condition,
                                  target=target,
                                  props=node.props)
-        print "rewriting : %s" % replacement.to_mwx()
         parent.rewrite(parent_ctx, index, replacement)
+
+        return replacement
 
 
 @registered
@@ -136,6 +147,19 @@ class PromoteStateObjects (TreeWalker):
         replacement = State(actions=actions, transitions=transitions, props=node.props)
         parent.rewrite(parent_ctx, index, replacement)
 
+        return replacement
+
+
+@registered
+class SilenceFolders(TreeWalker):
+
+    folder_obj_types = ['folder', 'variables', 'io_devices', 'sounds', 'stimuli', 'filters', 'optimizers']
+
+    def trigger(self, node):
+        return isinstance(node, MWASTNode) and node.obj_type in self.folder_obj_types
+
+    def action(self, node, parent=None, parent_ctx=None, index=None):
+        node.silent_syntax = True
 
 
 def do_registered_xml_import_rewrites(tree):

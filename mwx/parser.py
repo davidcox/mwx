@@ -5,7 +5,7 @@ from copy import deepcopy
 
 from mwx.ast import *
 from mwx.constants import *
-from mwx.ast.rewrites import do_registered_rewrites
+from mwx.ast.xml_export import do_registered_rewrites
 from mwx.ast.xml_import import do_registered_xml_import_rewrites
 
 
@@ -143,10 +143,12 @@ class MWXParser:
         # ------------------------------
 
         # Valid names of container object.  TODO: build from MWLibrary.xml
-        container_name = oneOf(" ".join(container_types))
+        # container_name = oneOf(" ".join(container_types))
 
         # Valid names of container object.  TODO: build from MWLibrary.xml
-        noncontainer_name = oneOf(" ".join(noncontainer_types))
+        # noncontainer_name = oneOf(" ".join(noncontainer_types))
+
+        object_name = oneOf(" ".join(container_types + noncontainer_types))
 
         # Valid names of action objects.  TODO: build from MWLibrary.xml
         action_name = oneOf(" ".join(shorthand_action_types))
@@ -326,20 +328,53 @@ class MWXParser:
         # "Ordinary" components
 
         valid_tag = (quoted_string_fn(True) | template_reference)
+        unquoted_tag = identifier
 
-        container = container_name("obj_type") - \
-                    prop_list_open + \
-                    Optional(valid_tag)("tag") + Optional(Suppress(",")) + Optional(property_list)("props") + \
-                    prop_list_close + \
-                    block(object_declaration, "children")
+        std_obj_decl = ((
+                         (object_name("obj_type") +         # "alt" syntax
+                           unquoted_tag("tag") -
+                           prop_list_open)
 
-        container.setParseAction(lambda c: MWASTNode(c.obj_type, c.tag, props=nested_array_to_dict(c.props), children=c.children))
+                          |                                   # OR
 
-        noncontainer = noncontainer_name("obj_type") - \
-                                 prop_list_open + \
-                                 Optional(valid_tag)("tag") + Optional(Suppress(",")) + Optional(property_list)("props") + \
-                                 prop_list_close
-        noncontainer.setParseAction(lambda o: MWASTNode(o.obj_type, o.tag, props=nested_array_to_dict(o.props)))
+                          (object_name("obj_type") +          # "regular" syntax
+                           prop_list_open -
+                           Optional(valid_tag)("tag")) +
+                           Optional(Suppress(","))
+
+                         ) +
+
+                         (Optional(property_list)("props") +  # remaining syntax
+                          prop_list_close +
+                          Optional(block(object_declaration, "children") +
+                          LineEnd()))
+                        )
+
+        std_obj_decl.setParseAction(lambda c: MWASTNode(c.obj_type, c.tag,
+                                                        props=nested_array_to_dict(c.props),
+                                                        children=getattr(c, 'children', [])))
+
+        # container_alt_syntax = container_name("obj_type") - \
+        #                        valid_tag("tag") + \
+        #                        prop_list_open + \
+        #                        Optional(Suppress(",")) + Optional(property_list)("props") + \
+        #                        prop_list_close + \
+        #                        block(object_declaration, "children")
+
+        # container_alt_syntax.setParseAction(lambda c: MWASTNode(c.obj_type, c.tag, props=nested_array_to_dict(c.props), children=c.children))
+
+        # noncontainer = noncontainer_name("obj_type") - \
+        #                prop_list_open + \
+        #                Optional(valid_tag)("tag") + Optional(Suppress(",")) + Optional(property_list)("props") + \
+        #                prop_list_close
+        # noncontainer.setParseAction(lambda o: MWASTNode(o.obj_type, o.tag, props=nested_array_to_dict(o.props)))
+
+        # noncontainer_alt_syntax = noncontainer_name("obj_type") - \
+        #                           valid_tag("tag") + \
+        #                           prop_list_open + \
+        #                           Optional(Suppress(",")) + Optional(property_list)("props") + \
+        #                           prop_list_close
+        # noncontainer_alt_syntax.setParseAction(lambda o: MWASTNode(o.obj_type, o.tag, props=nested_array_to_dict(o.props)))
 
         transition = ((dummy_token("transition") | macro_element |
                         Literal("always") | conditional)("condition") -
@@ -383,7 +418,8 @@ class MWXParser:
                 x.object.props['alias'] = x.alias
             return x.object
 
-        ordinary_object_declaration = Optional(identifier("alias") + assign) + (noncontainer | container | action | state)("object")
+        ordinary_object_declaration = Optional(identifier("alias") + assign) + (std_obj_decl |
+                                                                                action | state)("object")
         ordinary_object_declaration.setParseAction(alias_parse_action)
 
         object_declaration << (macro_if | template_definition | template_reference | ordinary_object_declaration | variable_declaration)
