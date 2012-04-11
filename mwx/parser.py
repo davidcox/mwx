@@ -134,8 +134,15 @@ class MWXParser:
         value = Forward()
 
         def quoted_string_fn(drop_quotes=True):
-            qs = QuotedString('"', "\\", "\\", False, drop_quotes) | \
-                 QuotedString("'", "\\", "\\", False, drop_quotes)
+            dq = QuotedString('"', "\\", "\\", False, True)
+            sq = QuotedString("'", "\\", "\\", False, True)
+
+            if drop_quotes:
+                dq.setParseAction(lambda s: str(s[0]).strip('"'))
+                sq.setParseAction(lambda s: str(s[0]).strip("'"))
+
+            qs = dq | sq
+
             return qs
 
         # ------------------------------
@@ -353,28 +360,6 @@ class MWXParser:
         std_obj_decl.setParseAction(lambda c: MWASTNode(c.obj_type, c.tag,
                                                         props=nested_array_to_dict(c.props),
                                                         children=getattr(c, 'children', [])))
-
-        # container_alt_syntax = container_name("obj_type") - \
-        #                        valid_tag("tag") + \
-        #                        prop_list_open + \
-        #                        Optional(Suppress(",")) + Optional(property_list)("props") + \
-        #                        prop_list_close + \
-        #                        block(object_declaration, "children")
-
-        # container_alt_syntax.setParseAction(lambda c: MWASTNode(c.obj_type, c.tag, props=nested_array_to_dict(c.props), children=c.children))
-
-        # noncontainer = noncontainer_name("obj_type") - \
-        #                prop_list_open + \
-        #                Optional(valid_tag)("tag") + Optional(Suppress(",")) + Optional(property_list)("props") + \
-        #                prop_list_close
-        # noncontainer.setParseAction(lambda o: MWASTNode(o.obj_type, o.tag, props=nested_array_to_dict(o.props)))
-
-        # noncontainer_alt_syntax = noncontainer_name("obj_type") - \
-        #                           valid_tag("tag") + \
-        #                           prop_list_open + \
-        #                           Optional(Suppress(",")) + Optional(property_list)("props") + \
-        #                           prop_list_close
-        # noncontainer_alt_syntax.setParseAction(lambda o: MWASTNode(o.obj_type, o.tag, props=nested_array_to_dict(o.props)))
 
         transition = ((dummy_token("transition") | macro_element |
                         Literal("always") | conditional)("condition") -

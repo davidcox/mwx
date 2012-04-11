@@ -9,15 +9,19 @@ variable["s", scope="global", default=0]  # the "tag" property is optional, and 
 
 selection_variable["stimulus_randomizer", randomization="random_without_replacement", draw=200, draw_type="samples"]
 
-block['blah']{
+# test of mixed container/noncontainer syntax
+block['blah0']{
     trial['bleep']
 }
 
 # Stimuli
 stimulus["blah", type="image_stimulus"]
 
+# test of alt syntax
+stimulus blah2[type='image_stimulus']
+
 # alt syntax
-stimulus blah[type='image_stimulus']
+stimulus blah3[type='image_stimulus']
 
 # replicate[variable="i", from=0, to=10]{
 #     stimulus["stim_$i", type="image_stimulus", file="stim_$i.png"]
