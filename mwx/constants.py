@@ -7,7 +7,8 @@ selection_types = container_types + ['selection_variable']
 
 noncontainer_types = ['stimulus',
                       'variable',
-                      'selection_variable']
+                      'selection_variable',
+                      'channel']
 
 
 class MWProperty(object):

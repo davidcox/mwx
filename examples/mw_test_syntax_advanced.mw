@@ -15,7 +15,7 @@ block['blah0']{
 }
 
 # Stimuli
-stimulus["blah", type="image_stimulus"]
+stimulus["blah", type="image_stimulus", blah="#blah"]
 
 # test of alt syntax
 stimulus blah2[type='image_stimulus']

@@ -173,7 +173,7 @@ class MWXParser:
         float_number.setParseAction(lambda x: float(x.str))
         time_unit = Literal("ms") | Literal("us") | Literal("s") | Literal("min")
         duration = Combine(integer_number + time_unit)
-        identifier = Word(alphanums + '_')
+        identifier = Word(alphanums + '_' + '#')
         function_call = identifier("name") + arg_list_open + Group(delimitedList(expression))("args") + arg_list_close
 
         def function_call_helper(n, a):
@@ -421,7 +421,9 @@ class MWXParser:
         # ------------------------------
 
         comment_regex = r"(//|#).*?$"  # accept either shell or c++ style comments
-        self.comment_parser = Suppress(Regex(comment_regex, re.MULTILINE | re.DOTALL))
+        self.comment_parser = (QuotedString('"', unquoteResults=False) |
+                               QuotedString("'", unquoteResults=False) |
+                               Suppress(Regex(comment_regex, re.MULTILINE | re.DOTALL)))
 
     def parse_string(self, s, process_templates=True):
         """Process a string containing valid MWX content, and return a tree of
