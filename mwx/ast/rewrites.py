@@ -42,17 +42,15 @@ registry.append(DrawsSyntaxRewriter)
 
 class TypeAliasRewriter(TreeWalker):
 
-    type_aliases = {'state': 'task_system_state'}
-
     def trigger(self, node):
         if (isinstance(node, MWASTNode) and
-            node.obj_type in self.type_aliases.keys()):
+            node.obj_type in type_aliases.keys()):
             return True
 
         return False
 
     def action(self, node, parent=None, parent_ctx=None, index=None):
-        node.obj_type = self.type_aliases[node.obj_type]
+        node.obj_type = type_aliases[node.obj_type]
 
 registry.append(TypeAliasRewriter)
 

@@ -6,6 +6,7 @@ from copy import deepcopy
 from mwx.ast import *
 from mwx.constants import *
 from mwx.ast.rewrites import do_registered_rewrites
+from mwx.ast.xml_import import do_registered_xml_import_rewrites
 
 
 # Helper functions
@@ -468,6 +469,6 @@ class MWXMLParser:
             template_engine = TemplateTreeRewriter(root_node)
             return_tree = template_engine.rewrite_tree()
 
-        return_tree = do_registered_rewrites(return_tree)
+        return_tree = do_registered_xml_import_rewrites(return_tree)
 
         return return_tree

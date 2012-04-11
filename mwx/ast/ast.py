@@ -1,9 +1,9 @@
 from xml.sax.saxutils import escape
-from copy import deepcopy
+from copy import deepcopy, copy
 import logging
 
 PRIMARY_ARG_STRING = "arg"
-from mwx.mw_constants import shorthand_actions
+from mwx.constants import shorthand_actions
 
 isiterable = lambda x: getattr(x, "__iter__", False)
 
@@ -44,6 +44,40 @@ def quote_once(x):
         return x
     else:
         return '"' + x + '"'
+
+
+def mwx_properties_block(props):
+
+    props = copy(props)
+    tag = props.pop('tag', None)
+
+    output_string = '['
+
+    props_strings = []
+    if tag is not None:
+        props_strings += ['"%s"' % tag]
+    props_strings += ['%s=%s' % kv for kv in props.items()]
+    output_string += ", ".join(props_strings)
+
+    output_string += ']'
+
+    return output_string
+
+
+def mwx_child_block(children, tablevel=0):
+
+    if len(children) == 0:
+        return ''
+
+    output_string = '{\n'
+
+    tabs = tab * tablevel
+
+    output_string += ''.join([to_mwx(child, tablevel + 1) for child in children])
+
+    output_string += tabs + '}'
+
+    return output_string
 
 
 def to_mwx(obj, tablevel=0, quote_strings=True):
@@ -204,33 +238,10 @@ class MWASTNode(object):
         output_string = tabs
         output_string += self.obj_type
 
-        proplist = []
+        output_string += mwx_properties_block(self.props)
+        output_string += mwx_child_block(self.children, tablevel)
 
-        if self.tag is not None:
-            proplist.append('%s' % self.tag)
-
-        if len(self.props.keys()) > 0:
-            for key in self.props.keys():
-                if key is 'tag':
-                    continue
-                value = self.props[key]
-                if isinstance(value, MWASTNode):
-                    value = value.to_mwx()
-                if value is None or value is '':
-                    value = '""'
-                proplist.append(key + " = " + str(value))
-
-        if len(proplist) > 0:
-            output_string += "[" + ", ".join(proplist) + "]"
-
-        if len(self.children) > 0:
-            output_string += "{\n"
-            for child in self.children:
-
-                child_mwlw = to_mwx(child, tablevel + 1)
-
-                output_string += "%s\n" % child_mwlw
-            output_string += tabs + "}\n"
+        output_string += '\n'
 
         return output_string
 
@@ -292,9 +303,9 @@ class Action (MWASTNode):
        tag from its type and arguments
     """
 
-    def __init__(self, action_type=None, arg=None, **kwargs):
+    def __init__(self, action_type=None, arg=None, props={}, children=[], alt_tag=None):
 
-        MWASTNode.__init__(self, "action")
+        MWASTNode.__init__(self, "action", props=props, children=children)
 
         if action_type is not None:
             self.props['type'] = action_type
@@ -307,8 +318,8 @@ class Action (MWASTNode):
 
         tag = None
         if 'tag' not in self.props:
-            if 'alt_tag' in kwargs:
-                tag = kwargs['alt_tag']
+            if alt_tag is not None:
+                tag = alt_tag
             # elif arg is not None and arg.__class__ == str:
             #     self.props['tag'] = action_type + " " + escape(arg.strip('" '))
             elif getattr(arg, "__str__", False):
@@ -324,31 +335,32 @@ class Action (MWASTNode):
 
         output_string = tabs
 
-        props_keys = self.props.keys()
+        props = copy(self.props)
 
-        if "type" not in props_keys:
+        if 'type' not in props.keys():
             return MWASTNode.to_mwx(self, tablevel)
 
         output_string += self.props['type']
 
         args = []
 
-        if PRIMARY_ARG_STRING in props_keys:
+        if PRIMARY_ARG_STRING in props.keys():
             args.append(to_mwx(self.props[PRIMARY_ARG_STRING]))
 
-        for key in props_keys:
+        primary_arg_key = shorthand_actions.get(props['type'], None)
+
+        if primary_arg_key is not None:
+            args.append(to_mwx(props.pop(primary_arg_key)))
+
+        for key in props.keys():
             if key == PRIMARY_ARG_STRING or key == "tag" or key == "type":
                 continue
-            args.append("%s = %s" % (key, to_mwx(self.props[key])))
+            args.append("%s=%s" % (key, to_mwx(self.props[key])))
 
         output_string += "(" + ", ".join(args) + ")"
 
-        if len(self.children) > 0:
-            output_string += "{\n"
-            for child in self.children:
-                child_mwlw = to_mwx(child, tablevel + 1)
-                output_string += "%s\n" % child_mwlw
-            output_string += tabs + "\n"
+        output_string += mwx_child_block(self.children, tablevel)
+        output_string += '\n'
 
         return output_string
 
@@ -407,6 +419,7 @@ class AssignmentAction (Action):
         output_string = "" + tabs
 
         output_string += "%s = %s" % (self.props['variable'], to_mwx(self.props['value']))
+        output_string += '\n'
 
         return output_string
 
@@ -414,10 +427,36 @@ class AssignmentAction (Action):
 class State (MWASTNode):
     """A custom node representing a state system state."""
 
-    def __init__(self, tag=None, actions=[], transitions=[], **kwargs):
+    def __init__(self, tag=None, actions=[], transitions=[], props={}):
 
+        if tag is None and 'tag' in props:
+            tag = props['tag']
+
+        self.actions = actions
+        self.transitions = transitions
         children = actions + transitions
-        MWASTNode.__init__(self, "state", tag, children=children)
+        MWASTNode.__init__(self, 'state', tag, children=children, props=props)
+
+    def to_mwx(self, tablevel=0):
+
+        tabs = tab * tablevel
+        output_string = tabs
+
+        output_string += self.obj_type
+
+        # [key=val, ...]
+        output_string += mwx_properties_block(self.props)
+
+        # { action\n action\n ... }
+        output_string += mwx_child_block(self.actions, tablevel)
+
+        output_string += ' transition '
+
+        # { transition\n transition\n ... }
+        output_string += mwx_child_block(self.transitions, tablevel)
+
+        output_string += '\n'
+        return output_string
 
 
 class Transition (MWASTNode):
