@@ -443,7 +443,6 @@ class MWXMLParser:
         for child in element.getchildren():
             children.append(self.xml_element_to_ast(child))
 
-        print("props in: %s" % props)
         return MWASTNode(element.tag, element.get('tag'),
                          props=deepcopy(props), children=children)
 

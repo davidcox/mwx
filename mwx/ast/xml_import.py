@@ -85,6 +85,35 @@ class ReverseTypeAliasRewriter(TreeWalker):
 
 
 @registered
+class PromoteTransitions(TreeWalker):
+
+    def trigger(self, node):
+        return  (isinstance(node, MWASTNode) and node.obj_type == 'transition')
+
+    def action(self, node, parent=None, parent_ctx=None, index=None):
+        transition_type = node.props['type']
+
+        if transition_type == 'conditional':
+            condition = node.props.get('condition', None)
+        else:
+            condition = 'always'
+
+        if transition_type == 'yield':
+            target = 'yield'
+        else:
+            target = node.props.get('target', None)
+
+        if condition is None or target is None:
+            raise Exception('Invalid transition object, cannot promote: %s' % node.to_ast_string())
+
+        replacement = Transition(condition=condition,
+                                 target=target,
+                                 props=node.props)
+        print "rewriting : %s" % replacement.to_mwx()
+        parent.rewrite(parent_ctx, index, replacement)
+
+
+@registered
 class PromoteStateObjects (TreeWalker):
 
     def trigger(self, node):
@@ -105,8 +134,8 @@ class PromoteStateObjects (TreeWalker):
                 transitions.append(c)
 
         replacement = State(actions=actions, transitions=transitions, props=node.props)
-        print 'rewriting %d action, %d transitions' % (len(actions), len(transitions))
         parent.rewrite(parent_ctx, index, replacement)
+
 
 
 def do_registered_xml_import_rewrites(tree):

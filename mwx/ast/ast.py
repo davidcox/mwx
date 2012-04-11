@@ -284,17 +284,7 @@ class RootNode (MWASTNode):
         return result
 
     def to_mwx(self):
-        output_string = ""
-
-        if len(self.children) > 0:
-
-            for child in self.children:
-
-                child_mwlw = to_mwx(child, 0)
-
-                output_string += "%s\n" % child_mwlw
-
-        return output_string
+        return ''.join([to_mwx(c) for c in self.children])
 
 
 class Action (MWASTNode):
@@ -412,8 +402,6 @@ class AssignmentAction (Action):
         if value is not None:
             self.props['value'] = value
 
-        #self.props['alt_tag'] = alt_tag
-
     def to_mwx(self, tablevel=0):
         tabs = tab * tablevel
         output_string = "" + tabs
@@ -481,11 +469,12 @@ class Transition (MWASTNode):
         output_string = '' + tabs
 
         condition = self.props['condition']
-        target = self.target['target']
+        target = self.props['target']
 
         output_string += "%s -> %s" % (to_mwx(condition),
                                        to_mwx(target))
 
+        output_string += '\n'
         return output_string
 
 
