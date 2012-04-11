@@ -1,14 +1,16 @@
 # TODO: read these from MW itself
 
 container_types = ['experiment', 'protocol', 'block', 'trial', 'protocol',
-                   'task_system', 'io_device', 'iodevice']
+                   'task_system', 'io_device', 'iodevice',
+                   'stimulus_group', 'range_replicator']
 
 selection_types = container_types + ['selection_variable']
 
 noncontainer_types = ['stimulus',
                       'variable',
                       'selection_variable',
-                      'channel']
+                      'channel',
+                      'sound']
 
 
 class MWProperty(object):

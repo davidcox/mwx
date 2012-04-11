@@ -8,6 +8,12 @@ from mwx.constants import *
 from mwx.ast.xml_export import do_registered_rewrites
 from mwx.ast.xml_import import do_registered_xml_import_rewrites
 
+import sys
+
+# Increase max stack size from 8MB to 512MB
+#resource.setrlimit(resource.RLIMIT_STACK, (2 ** 29, -1))
+sys.setrecursionlimit(10 ** 6)
+
 
 # Helper functions
 
@@ -339,13 +345,13 @@ class MWXParser:
 
         std_obj_decl = ((
                          (object_name("obj_type") +         # "alt" syntax
-                           unquoted_tag("tag") -
+                           unquoted_tag("tag") +
                            prop_list_open)
 
                           |                                   # OR
 
                           (object_name("obj_type") +          # "regular" syntax
-                           prop_list_open -
+                           prop_list_open +
                            Optional(valid_tag)("tag")) +
                            Optional(Suppress(","))
 
@@ -424,12 +430,27 @@ class MWXParser:
         self.comment_parser = (QuotedString('"', unquoteResults=False) |
                                QuotedString("'", unquoteResults=False) |
                                Suppress(Regex(comment_regex, re.MULTILINE | re.DOTALL)))
+        self.comment_parser.enablePackrat()
 
     def parse_string(self, s, process_templates=True):
         """Process a string containing valid MWX content, and return a tree of
            MWASTNode objects
         """
-        uncommented = self.comment_parser.transformString(s)
+
+        # remove all of the comments
+        # must be line by line due to weirdness in pyparsing
+        s_lines = s.split('\n')
+        processed_lines = [self.comment_parser.transformString(s_) for s_ in s_lines]
+
+        # remove blank lines
+        remove_blank_lines = False
+        if remove_blank_lines:
+            r = re.compile(r'^\s*$')
+            uncommented = '\n'.join([x for x in processed_lines if not r.match(x)]) + '\n'
+        else:
+            uncommented = '\n'.join(processed_lines)
+
+        print uncommented
 
         try:
             results = self.parser.parseString(uncommented, parseAll=True)
