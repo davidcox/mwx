@@ -101,11 +101,11 @@ class MWXParser:
         block = None
         if use_significant_whitespace:
             block_open = Suppress(":")
-            block = lambda x, p: block_open + (indentedBlock(x, self.indent_stack, True))(p)
+            block = lambda x, p: block_open - (indentedBlock(x, self.indent_stack, True))(p)
         else:
             block_open = Suppress("{")
             block_close = Suppress("}")
-            block = lambda x, p: block_open + OneOrMore(x)(p) + block_close
+            block = lambda x, p: block_open - OneOrMore(x)(p) + block_close
 
         # Some other stylistic variations
         prop_list_open = Suppress("[")
@@ -345,13 +345,13 @@ class MWXParser:
 
         std_obj_decl = ((
                          (object_name("obj_type") +         # "alt" syntax
-                           unquoted_tag("tag") +
+                           unquoted_tag("tag") -
                            prop_list_open)
 
                           |                                   # OR
 
                           (object_name("obj_type") +          # "regular" syntax
-                           prop_list_open +
+                           prop_list_open -
                            Optional(valid_tag)("tag")) +
                            Optional(Suppress(","))
 
