@@ -1,0 +1,18 @@
+
+
+macro a = 3
+
+macro c(val){
+	wait(100ms)
+}
+
+macro b(value){
+
+	@if (@value > 2){
+		@c(@value)
+	} else {
+		wait(50ms)
+	}
+}
+
+@b(@a)
