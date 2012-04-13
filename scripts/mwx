@@ -56,6 +56,7 @@ if __name__ == "__main__":
     input_string = input_file.read()
     input_file.close()
 
+    base_path = os.path.dirname(input_filename)
     file_extension = os.path.splitext(input_filename)[-1]
 
     tic = time.time()
@@ -76,7 +77,8 @@ if __name__ == "__main__":
     loglevel = getattr(logging, l.upper(), 0)
     logging.basicConfig(level=loglevel)
     results = parser.parse_string(input_string,
-                                  process_templates=process_templates)
+                                  process_templates=process_templates,
+                                  base_path=base_path)
 
     toc = time.time()
 

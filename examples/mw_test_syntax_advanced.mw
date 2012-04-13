@@ -1,5 +1,7 @@
 ## mwpp="/usr/bin/env mwx -x"
 
+include if_test.mw
+
 macro state1 = "State 1"  # these defines will get substituted during compilation to XML
 macro state2 = "State 2"
 

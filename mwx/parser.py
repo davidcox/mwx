@@ -8,6 +8,7 @@ from mwx.constants import *
 from mwx.ast.xml_export import do_registered_rewrites
 from mwx.ast.xml_import import do_registered_xml_import_rewrites
 
+import os
 import sys
 
 # Increase max stack size from 8MB to 512MB
@@ -72,6 +73,18 @@ def print_parser_error(pe, input_string=None):
     stderr.write(" " * (col + 8) + "^\n")
     stderr.write("%4d:    %s\n" % (pe.lineno + 1, following))
 
+
+def quoted_string_fn(drop_quotes=True):
+    dq = QuotedString('"', "\\", "\\", False, True)
+    sq = QuotedString("'", "\\", "\\", False, True)
+
+    if drop_quotes:
+        dq.setParseAction(lambda s: str(s[0]).strip('"'))
+        sq.setParseAction(lambda s: str(s[0]).strip("'"))
+
+    qs = dq | sq
+
+    return qs
 
 class MWXParser:
     """A parser object for the 'MWX' lightweight MWorks DSL."""
@@ -139,18 +152,6 @@ class MWXParser:
         expression = Forward()
         value = Forward()
 
-        def quoted_string_fn(drop_quotes=True):
-            dq = QuotedString('"', "\\", "\\", False, True)
-            sq = QuotedString("'", "\\", "\\", False, True)
-
-            if drop_quotes:
-                dq.setParseAction(lambda s: str(s[0]).strip('"'))
-                sq.setParseAction(lambda s: str(s[0]).strip("'"))
-
-            qs = dq | sq
-
-            return qs
-
         # ------------------------------
         # Keywords
         # ------------------------------
@@ -168,6 +169,9 @@ class MWXParser:
 
         # Allowed foreign languages
         language_name = Literal("python") | Literal("ruby")
+
+        # import and include
+        #import_kw = Keyword('import')
 
         # ------------------------------
         # Values and Expressions
@@ -416,7 +420,11 @@ class MWXParser:
                                                                                 action | state)("object")
         ordinary_object_declaration.setParseAction(alias_parse_action)
 
-        object_declaration << (macro_if | template_definition | template_reference | ordinary_object_declaration | variable_declaration)
+        object_declaration << (macro_if |
+                               template_definition |
+                               template_reference |
+                               ordinary_object_declaration |
+                               variable_declaration)
 
         # --------------------------------------
         # Final assembly into a "master" parser
@@ -435,41 +443,36 @@ class MWXParser:
                                Suppress(Regex(comment_regex, re.MULTILINE | re.DOTALL)))
         #self.comment_parser.enablePackrat()
 
-    def parse_string(self, s, process_templates=True):
+    def include_parser(self, base_path):
+
+        # Include preprocessor
+        # File include
+        path = Word(alphas + '_./')
+        include_kw = Keyword('include')
+
+
+        include_statement = LineStart() + include_kw - (quoted_string_fn(False) | path)('path') + LineEnd()
+
+        def include_file(p):
+            with open(os.path.join(base_path, p), 'r') as f:
+                return ''.join(f.readlines())
+
+        include_statement.setParseAction(lambda x: include_file(x.path))
+
+        return include_statement
+
+    def parse_string(self, s, process_templates=True, base_path='.'):
         """Process a string containing valid MWX content, and return a tree of
            MWASTNode objects
         """
 
-        import time
-        tic = time.time()
+        preprocessed = self.comment_parser.transformString(s)
+        preprocessed = self.include_parser(base_path).transformString(preprocessed)
 
-        # remove all of the comments
-        # must be line by line due to weirdness in pyparsing
-        # s_lines = s.split('\n')
-
-        # s_lines2 = []
-        # incr = 10000
-        # for l in range(0, len(s_lines), incr):
-        #     limit = l + incr
-        #     if limit > len(s_lines):
-        #         limit = len(s_lines) - 1
-        #     s_lines2.append("\n".join(s_lines[l:limit]))
-
-        # processed_lines = [self.comment_parser.transformString(s_) for s_ in s_lines2]
-
-        # # remove blank lines
-        # remove_blank_lines = False
-        # if remove_blank_lines:
-        #     r = re.compile(r'^\s*$')
-        #     uncommented = '\n'.join([x for x in processed_lines if not r.match(x)]) + '\n'
-        # else:
-        #     uncommented = '\n'.join(processed_lines)
-
-        uncommented = self.comment_parser.transformString(s)
         #print 'Elapsed: %f' % (time.time() - tic)
 
         try:
-            results = self.parser.parseString(uncommented, parseAll=True)
+            results = self.parser.parseString(preprocessed, parseAll=True)
 
         except ParseBaseException, pe:
             print_parser_error(pe, s)
