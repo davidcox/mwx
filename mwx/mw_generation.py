@@ -11,7 +11,7 @@ def generate_unique_id():
 
 class TypeFilteredTreeWalker(TreeWalker):
 
-    def __init__(self, tree, filt=None, **kwargs):
+    def __init__(self, tree, filt=None):
         TreeWalker.__init__(self, tree)
 
         if filt is None:
@@ -48,10 +48,10 @@ class CreateObjectPass(TypeFilteredTreeWalker):
         objects
     """
 
-    def __init__(self, tree, reg, filt=None, **kwargs):
-        TypeFilteredTreeWalker.__init__(self, tree, filt, **kwargs)
+    def __init__(self, tree, reg, filt=None, anonymous=False):
+        TypeFilteredTreeWalker.__init__(self, tree, filt)
         self.mw = reg
-        self.anonymous = kwargs.get('anonymous', False)
+        self.anonymous = anonymous
 
     def action(self, node, parent=None, parent_ctx=None, index=None):
         # if this is a property of an entity, rather than an entity
@@ -83,8 +83,8 @@ class ExpandReplicatorPass(TypeFilteredTreeWalker):
     """
 
     def __init__(self, tree, reg, filt=None):
-        TypeFilteredTreeWalker.__init__(self, tree, reg, ['range_replicator',
-                                                          'list_replicator'])
+        TypeFilteredTreeWalker.__init__(self, tree, ['range_replicator',
+                                                     'list_replicator'])
         self.mw = reg
 
     def action(self, node, parent=None, parent_ctx=None, index=None):
@@ -202,7 +202,7 @@ def generate_mw_objects(node_tree, reg):
             anonymous=True)
 
     # Expand replicators
-    #node_tree = mw_pass(node_tree, reg, ExpandReplicatorPass)
+    node_tree = mw_pass(node_tree, reg, ExpandReplicatorPass)
 
     # Connect nodes together
     mw_pass(node_tree, reg, ConnectPass, paradigm_components)

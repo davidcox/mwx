@@ -433,25 +433,40 @@ class MWXParser:
         self.comment_parser = (QuotedString('"', unquoteResults=False) |
                                QuotedString("'", unquoteResults=False) |
                                Suppress(Regex(comment_regex, re.MULTILINE | re.DOTALL)))
-        self.comment_parser.enablePackrat()
+        #self.comment_parser.enablePackrat()
 
     def parse_string(self, s, process_templates=True):
         """Process a string containing valid MWX content, and return a tree of
            MWASTNode objects
         """
 
+        import time
+        tic = time.time()
+
         # remove all of the comments
         # must be line by line due to weirdness in pyparsing
-        s_lines = s.split('\n')
-        processed_lines = [self.comment_parser.transformString(s_) for s_ in s_lines]
+        # s_lines = s.split('\n')
 
-        # remove blank lines
-        remove_blank_lines = False
-        if remove_blank_lines:
-            r = re.compile(r'^\s*$')
-            uncommented = '\n'.join([x for x in processed_lines if not r.match(x)]) + '\n'
-        else:
-            uncommented = '\n'.join(processed_lines)
+        # s_lines2 = []
+        # incr = 10000
+        # for l in range(0, len(s_lines), incr):
+        #     limit = l + incr
+        #     if limit > len(s_lines):
+        #         limit = len(s_lines) - 1
+        #     s_lines2.append("\n".join(s_lines[l:limit]))
+
+        # processed_lines = [self.comment_parser.transformString(s_) for s_ in s_lines2]
+
+        # # remove blank lines
+        # remove_blank_lines = False
+        # if remove_blank_lines:
+        #     r = re.compile(r'^\s*$')
+        #     uncommented = '\n'.join([x for x in processed_lines if not r.match(x)]) + '\n'
+        # else:
+        #     uncommented = '\n'.join(processed_lines)
+
+        uncommented = self.comment_parser.transformString(s)
+        #print 'Elapsed: %f' % (time.time() - tic)
 
         try:
             results = self.parser.parseString(uncommented, parseAll=True)
