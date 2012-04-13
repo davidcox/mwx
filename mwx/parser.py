@@ -216,7 +216,7 @@ class MWXParser:
 
         macro_template_val = def_keyword + identifier("name") + \
                               Optional(Suppress("(") + ZeroOrMore(identifier + Optional(Suppress(","))) + Suppress(")"))("args") + \
-                              Suppress(assign) + value("body")
+                              Suppress(assign) - value("body")
 
         macro_template_decl.setParseAction(lambda x: create_template_definition(x.name, x.args, children=x.body))  # for now
         macro_template_val.setParseAction(lambda x: create_template_definition(x.name, x.args, children=x.body))  # for now
@@ -227,8 +227,8 @@ class MWXParser:
         # Macro control flow
         # ------------------------------
 
-        macro_if = macro_symbol + Suppress("if") + \
-                   Suppress("(") + expression("condition") + Suppress(")") -\
+        macro_if = macro_symbol + Suppress("if") - \
+                   Suppress("(") - expression("condition") + Suppress(")") -\
                    block(object_declaration, "body") +\
                    Optional(Suppress("else") + \
                             block(object_declaration, "else_body"))
@@ -244,7 +244,7 @@ class MWXParser:
         # ------------------------------
 
         # Basic expression handling
-        operand = (template_reference | duration | integer_number | float_number | quoted_string_fn(False) |
+        operand = (template_reference | duration | float_number | integer_number | quoted_string_fn(False) |
                    function_call | array_reference | variable_reference)
 
         exp_op = Literal("^") | Literal("**")
@@ -316,12 +316,15 @@ class MWXParser:
         # ------------------------------
 
         # Actions
+        std_obj_decl = Forward()
         action = Forward()
 
-        generic_action = action_name("type") + arg_list_open + Optional(value)("arg") + Optional(property_list)("props") + arg_list_close
+        generic_action = (action_name("type") + arg_list_open -
+                          Optional(value)("arg") + Optional(property_list)("props") +
+                          arg_list_close)
         generic_action.setParseAction(lambda a: Action(a.type,  a.arg, props=a.props))
 
-        assignment_action = NotAny(def_keyword) + identifier("variable") + assign + value("value")
+        assignment_action = NotAny(def_keyword) + identifier("variable") + assign - value("value")
         assignment_action.setParseAction(lambda a: AssignmentAction(a.variable, a.value))
 
         if(use_significant_whitespace):
@@ -333,17 +336,17 @@ class MWXParser:
 
         foreign_code_action.setParseAction(lambda a: ForeignCodeAction(a.lang, remove_python_padding(a.code, a.padding)))
 
-        if_action = Literal("if") + conditional("condition") + block(action, "children")
+        if_action = Literal("if") - conditional("condition") + block(action, "children")
         if_action.setParseAction(lambda a: MWASTNode("action", props={"type": "if", "condition": a.condition}, children=a.children))
 
-        action << (dummy_token("action") | macro_element | generic_action | assignment_action | foreign_code_action | if_action)
+        action << (dummy_token("action") | macro_element | assignment_action | foreign_code_action | if_action | generic_action | std_obj_decl)
 
         # "Ordinary" components
 
         valid_tag = (quoted_string_fn(True) | template_reference)
         unquoted_tag = identifier
 
-        std_obj_decl = ((
+        std_obj_decl << ((
                          (object_name("obj_type") +         # "alt" syntax
                            unquoted_tag("tag") -
                            prop_list_open)
@@ -369,7 +372,7 @@ class MWXParser:
 
         transition = ((dummy_token("transition") | macro_element |
                         Literal("always") | conditional)("condition") -
-                        Suppress("->") +
+                        Suppress("->") -
                         (dummy_token("transition target") |
                             quoted_string_fn() | template_reference | Literal("yield"))("target") +
                         LineEnd()
@@ -449,8 +452,6 @@ class MWXParser:
             uncommented = '\n'.join([x for x in processed_lines if not r.match(x)]) + '\n'
         else:
             uncommented = '\n'.join(processed_lines)
-
-        print uncommented
 
         try:
             results = self.parser.parseString(uncommented, parseAll=True)

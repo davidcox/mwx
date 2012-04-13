@@ -1,3 +1,5 @@
+import re
+
 # TODO: read these from MW itself
 
 container_types = ['experiment', 'protocol', 'block', 'trial', 'protocol',
@@ -10,7 +12,8 @@ noncontainer_types = ['stimulus',
                       'variable',
                       'selection_variable',
                       'channel',
-                      'sound']
+                      'sound',
+                      'action']
 
 
 class MWProperty(object):
@@ -36,9 +39,15 @@ def quoted_string(s):
     return '"s"'
 
 
+def optionally_quoted_string(s):
+    if re.search(r'\s', s):
+        return '"%s"' % s
+    else:
+        return s
+
 class MWType(object):
 
-    def __init__(self, name, interpret_fn=str):
+    def __init__(self, name, interpret_fn=optionally_quoted_string):
         self.name = name
         self.interpret_fn = interpret_fn
 
@@ -47,7 +56,7 @@ class MWType(object):
 
 mw_string = MWType('string', quoted_string)
 mw_time = MWType('time')
-mw_expression = MWType('expression')
+mw_expression = MWType('expression', str)
 mw_stimulus = MWType('stimulus')
 mw_selection = MWType('selection')
 mw_iodevice = MWType('iodevice')
