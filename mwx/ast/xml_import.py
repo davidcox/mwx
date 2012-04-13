@@ -49,6 +49,21 @@ class PromoteGenericActions (TreeWalker):
 
 
 @registered
+class PromoteVariables (TreeWalker):
+
+    def trigger(self, node):
+        return (isinstance(node, MWASTNode) and
+                node.obj_type == 'variable')
+
+    def action(self, node, parent=None, parent_ctx=None, index=None):
+
+        replacement = MWVariable(node.tag, props=node.props, children=node.children)
+        parent.rewrite(parent_ctx, index, replacement)
+
+        return replacement
+
+
+@registered
 class DeleteMarkers (TreeWalker):
 
     def trigger(self, node):
@@ -105,6 +120,9 @@ class PromoteTransitions(TreeWalker):
 
         if transition_type == 'conditional':
             condition = node.props.get('condition', None)
+        elif transition_type == 'timer_expired':
+            timer = node.props.get('timer')
+            condition = 'timer_expired(%s)' % timer
         else:
             condition = MWKeyword('always')
 

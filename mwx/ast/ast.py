@@ -1,5 +1,6 @@
 from xml.sax.saxutils import escape
 from copy import deepcopy, copy
+import re
 
 PRIMARY_ARG_STRING = "arg"
 from mwx.constants import shorthand_actions
@@ -7,6 +8,8 @@ from mwx.constants import shorthand_actions
 isiterable = lambda x: getattr(x, "__iter__", False)
 
 tab = "    "
+use_declaration_style_syntax = True
+use_declaration_style_syntax_for_states = True
 
 
 def flatten(x):
@@ -47,6 +50,9 @@ def quote_once(x):
 
 def mwx_properties_block(props):
 
+    if len(props.keys()) == 0:
+        return ''
+
     props = copy(props)
     tag = props.pop('tag', None)
 
@@ -59,6 +65,24 @@ def mwx_properties_block(props):
     output_string += ", ".join(props_strings)
 
     output_string += ']'
+
+    return output_string
+
+
+def mwx_declaration(obj_type, props, declaration_style_syntax=use_declaration_style_syntax):
+
+    output_string = obj_type
+
+    if declaration_style_syntax:
+        props = copy(props)
+        tag = props.pop('tag')
+
+        if re.search(r'\s|[$@]', tag):
+            props['tag'] = tag  # put it back
+        else:
+            output_string += ' ' + tag
+
+    output_string += mwx_properties_block(props)
 
     return output_string
 
@@ -141,7 +165,7 @@ class MWASTNode(object):
     def __init__(self, obj_type, tag=None, props={}, children=[]):
 
         self.obj_type = obj_type
-        self.props = deepcopy(props)
+        self.props = copy(props)
 
         if self.props == None or self.props == '':
             self.props = {}
@@ -246,8 +270,7 @@ class MWASTNode(object):
             output_string += ''.join([to_mwx(c) for c in self.children])
             return output_string
 
-        output_string += self.obj_type
-        output_string += mwx_properties_block(self.props)
+        output_string += mwx_declaration(self.obj_type, self.props)
 
         output_string += mwx_child_block(self.children, tablevel)
 
@@ -304,6 +327,61 @@ class RootNode (MWASTNode):
 
     def to_mwx(self):
         return ''.join([to_mwx(c) for c in self.children])
+
+
+class MWVariable(MWASTNode):
+
+    def __init__(self, tag, default=None, scope='global', var_type=None, props={}, children=[]):
+
+        try:
+            props = copy(props)
+        except:
+            print props
+            raise('shit!!')
+        if isinstance(props, str):
+            props = {}
+
+        if props is None:
+            props = {}
+
+        if default is not None:
+            props['default_value'] = default
+
+        if scope is None:
+            scope = 'global'
+
+        if var_type is None or var_type == 'var':
+            var_type = 'float'
+
+        props['scope'] = scope
+
+        props['type'] = var_type
+
+        MWASTNode.__init__(self, 'variable', tag, props=props, children=children)
+
+    def to_mwx(self, tablevel=0):
+
+        props = copy(self.props)
+
+        tag = props.pop('tag')
+        scope = props.pop('scope', 'global').lower()
+        var_type = props.pop('type', 'var').lower()
+
+        default = props.pop('default_value', '0.0')
+
+        s = tab * tablevel
+
+        if scope == 'local':
+            s += 'local '
+
+        s += var_type + ' '
+        s += tag
+        s += mwx_properties_block(props)
+        s += ' = %s' % default
+
+        s += '\n'
+
+        return s
 
 
 class Action (MWASTNode):
@@ -449,10 +527,9 @@ class State (MWASTNode):
         tabs = tab * tablevel
         output_string = tabs
 
-        output_string += self.obj_type
-
-        # [key=val, ...]
-        output_string += mwx_properties_block(self.props)
+        output_string += mwx_declaration(self.obj_type,
+                                         self.props,
+                                         use_declaration_style_syntax_for_states)
 
         # { action\n action\n ... }
         output_string += mwx_child_block(self.actions, tablevel)
@@ -472,7 +549,6 @@ class Transition (MWASTNode):
     """
 
     def __init__(self, condition=None, target=None, **kwargs):
-
         alt_tag = "%s -> %s" % (to_mwx(condition), to_mwx(target))
         kwargs['alt_tag'] = alt_tag
         kwargs['tag'] = alt_tag
@@ -490,7 +566,7 @@ class Transition (MWASTNode):
         condition = self.props['condition']
         target = self.props['target']
 
-        output_string += "%s -> %s" % (to_mwx(condition),
+        output_string += "%s -> %s" % (to_mwx(condition, quote_strings=False),
                                        to_mwx(target))
 
         output_string += '\n'
@@ -571,14 +647,13 @@ class MWFunctionCall (MWASTNode):
     def to_mwx(self, tablevel=0):
         return self.to_infix()
 
-    def to_infix(self):
+    def to_infix(self, quote_strings=False):
         out = self.props['tag']
         out += '(' + to_mwx(self.children) + ')'
         return out
 
     def __str__(self):
         return self.to_mwx()
-
 
 
 class MWExpression (MWASTNode):
@@ -622,10 +697,7 @@ class MWExpression (MWASTNode):
     def to_xml(self):
         return self.to_infix()
 
-    def to_infix(self, strip_quotes=False):
-
-        # qs = not strip_quotes
-        # output_string = ""
+    def to_infix(self, quote_strings=False):
 
         if len(self.children) == 1:
             operand = to_infix(self.children[0])
@@ -638,7 +710,7 @@ class MWExpression (MWASTNode):
     # this is a bit of a hack for now
     # evaluate an expression at parse time (e.g. for macro control flow)
     def eval(self):
-        eval_string = self.to_infix(strip_quotes=True)
+        eval_string = self.to_infix(quote_strings=False)
         try:
             return eval(eval_string)
         except:

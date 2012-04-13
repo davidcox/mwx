@@ -18,18 +18,6 @@ sys.setrecursionlimit(10 ** 6)
 
 # Helper functions
 
-def nested_array_to_dict(a):
-    """Convert a nested array of key-value pairs (from pyparsing) to a
-       dictionary
-    """
-    d = {}
-
-    if a is not None and a != '':
-        for pair in a:
-            d[pair[0]] = pair[1]
-    return d
-
-
 def list_to_literals(list_of_names):
     """Convert a list of strings to an OR'd sequence of pyparsing Literal
        objects
@@ -85,6 +73,7 @@ def quoted_string_fn(drop_quotes=True):
     qs = dq | sq
 
     return qs
+
 
 class MWXParser:
     """A parser object for the 'MWX' lightweight MWorks DSL."""
@@ -326,7 +315,7 @@ class MWXParser:
         generic_action = (action_name("type") + arg_list_open -
                           Optional(value)("arg") + Optional(property_list)("props") +
                           arg_list_close)
-        generic_action.setParseAction(lambda a: Action(a.type,  a.arg, props=a.props))
+        generic_action.setParseAction(lambda a: Action(a.type,  a.arg, props=dict(a.props)))
 
         assignment_action = NotAny(def_keyword) + identifier("variable") + assign - value("value")
         assignment_action.setParseAction(lambda a: AssignmentAction(a.variable, a.value))
@@ -350,28 +339,28 @@ class MWXParser:
         valid_tag = (quoted_string_fn(True) | template_reference)
         unquoted_tag = identifier
 
-        std_obj_decl << ((
-                         (object_name("obj_type") +         # "alt" syntax
-                           unquoted_tag("tag") -
-                           prop_list_open)
+        def decl_and_properties(object_name_combinator):
+            return ((object_name_combinator +         # "alt" syntax
+                     unquoted_tag("tag") -
+                     Optional(prop_list_open -
+                              Optional(property_list)('props') +
+                              prop_list_close))
 
-                          |                                   # OR
+                     |                                   # OR
 
-                          (object_name("obj_type") +          # "regular" syntax
+                     (object_name_combinator +          # "regular" syntax
                            prop_list_open -
-                           Optional(valid_tag)("tag")) +
-                           Optional(Suppress(","))
+                           Optional(valid_tag + Optional(Suppress(',')))("tag") +
+                           Optional(property_list)("props") +
+                           prop_list_close))
 
-                         ) +
-
-                         (Optional(property_list)("props") +  # remaining syntax
-                          prop_list_close +
-                          Optional(block(object_declaration, "children") +
-                          LineEnd()))
+        std_obj_decl << (decl_and_properties(object_name("obj_type")) +
+                          Optional(block(object_declaration, "children") +   # remaining syntax
+                                   LineEnd())
                         )
 
         std_obj_decl.setParseAction(lambda c: MWASTNode(c.obj_type, c.tag,
-                                                        props=nested_array_to_dict(c.props),
+                                                        props=dict(c.props),
                                                         children=getattr(c, 'children', [])))
 
         transition = ((dummy_token("transition") | macro_element |
@@ -391,20 +380,31 @@ class MWXParser:
         else:
             state_payload = block(action, "actions") + transition_list_marker + block(transition, "transitions")
 
-        state = Literal("state") - \
-                prop_list_open + \
-                Optional(valid_tag)("tag") + Optional(Suppress(",")) + Optional(property_list)("props") + \
-                prop_list_close + \
-                state_payload
+        state = decl_and_properties(Literal('state')) + state_payload
 
-        state.setParseAction(lambda s: State(s.tag, props=s.props, actions=s.actions, transitions=s.transitions))
+        state.setParseAction(lambda s: State(s.tag, props=dict(s.props), actions=s.actions, transitions=s.transitions))
 
         # ------------------------------
         # Variable Declarations
         # ------------------------------
 
-        variable_declaration = LineStart() + Literal("var") - identifier("tag") + Optional(assign + value("default"))
-        variable_declaration.setParseAction(lambda x: MWASTNode("variable", x.tag, props={'default': x.default}))
+        scope_type = (Literal('global') | Literal('local'))
+        variable_type = (dummy_token('variabletype') |
+                         Literal('integer') |
+                         Literal('float') |
+                         Literal('bool') |
+                         Literal('string') |
+                         Literal('struct') |
+                         Literal('var'))
+
+        variable_declaration = (LineStart() +
+                                Optional(scope_type) +
+                                variable_type('type') -
+                                identifier("tag") +
+                                Optional(prop_list_open + Optional(property_list('props')) + prop_list_close) +  # property list
+                                Optional(assign + value("default")))  # default value assignment
+
+        variable_declaration.setParseAction(lambda x: MWVariable(x.tag, default=x.default, props=dict(x.props)))
 
         # ----------------------------------------------------
         # Top-level object declarations and aliases thereof
@@ -495,13 +495,26 @@ class MWXMLParser:
     def __init__(self):
         self.handlers = {}
 
+    def mwxml_unescape(self, s):
+        replacements = {'#GT': '>',
+                        '#LT': '<',
+                        '#GE': '>=',
+                        '#LE': '<=',
+                        '#AND': '&&',
+                        '#OR': '||'
+                        }
+        for a, b in replacements.items():
+            s = re.sub(r'%s' % a, b, s)
+
+        return s
+
     def xml_element_to_ast(self, element):
         """Converts an xml element to an MWASTNode"""
         props = {}
         children = []
 
         for key in element.keys():
-            props[key] = element.get(key)
+            props[key] = self.mwxml_unescape(element.get(key))
 
         for child in element.getchildren():
             children.append(self.xml_element_to_ast(child))
@@ -509,7 +522,7 @@ class MWXMLParser:
         return MWASTNode(element.tag, element.get('tag'),
                          props=deepcopy(props), children=children)
 
-    def parse_string(self, s, process_templates=True):
+    def parse_string(self, s, process_templates=True, base_path='.'):
         """Process a string containing MW XML, and return a tree of MWASTNode
            objects
         """
